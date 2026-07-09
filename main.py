@@ -17,7 +17,7 @@ def run_server():
 # --- بياناتك ---
 TOKEN = os.environ.get("BOT_TOKEN", "8418588205:AAG983jkzjH6rUrhmeRf6V2gI6fDRNE1De0")
 ADMIN_PASSWORD = "123"
-ADMIN_ID = "8418588205"
+ADMIN_ID = "8418588205"  # تأكد أنه نفس الـ ID الذي يظهر في الـ Logs
 DESTINATION_ID = "-5378998412"
 
 def init_db():
@@ -38,12 +38,19 @@ async def send_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.reply_text("يمكنك الآن إرسال ملفك وسأقوم بتحويله للأستاذ مباشرة.")
 
 async def add_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args or context.args[0] != ADMIN_PASSWORD:
+    # نتحقق من كلمة السر في التعليق
+    caption = update.message.caption or ""
+    parts = caption.split()
+    
+    if len(parts) < 2 or parts[1] != ADMIN_PASSWORD:
         return
-    section = context.args[1] if len(context.args) > 1 else "عام"
+
+    section = parts[2] if len(parts) > 2 else "عام"
+    
     if update.message.document or update.message.photo:
         file_id = update.message.document.file_id if update.message.document else update.message.photo[-1].file_id
         file_name = update.message.document.file_name if update.message.document else "صورة.jpg"
+        
         conn = sqlite3.connect('data.db')
         conn.cursor().execute('INSERT INTO files (section, file_id, file_name) VALUES (?, ?, ?)', (section, file_id, file_name))
         conn.commit()
@@ -51,18 +58,21 @@ async def add_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ تم إضافة الملف لقسم: {section}")
 
 async def handle_student_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # الحصول على نص الرسالة (التعليق) إن وجد
+    # التحقق من هوية المرسل
+    sender_id = str(update.message.from_user.id)
     caption = update.message.caption or ""
+
+    # إذا كان المرسل هو الأدمين
+    if sender_id == ADMIN_ID:
+        if "/add" in caption:
+            await add_file(update, context)
+        else:
+            await update.message.reply_text("⚠️ أهلاً أستاذ عمر. للرفع استخدم الصيغة: /add 123 اسم_القسم")
     
-    # التحقق هل الرسالة هي محاولة إضافة ملف من الأدمين؟
-    if caption.startswith("/add"):
-        # هنا نستدعي دالة إضافة الملف إذا كان النص يبدأ بـ /add
-        await add_file(update, context)
+    # إذا كان المرسل طالباً
     else:
-        # إذا لم تكن إضافة، فهي رسالة من طالب، نقوم بتحويلها للجروب
-        if str(update.message.from_user.id) != ADMIN_ID:
-            await context.bot.forward_message(chat_id=DESTINATION_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
-            await update.message.reply_text("✅ تم استلام ملفك وإرساله للأستاذ بنجاح.")
+        await context.bot.forward_message(chat_id=DESTINATION_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
+        await update.message.reply_text("✅ تم استلام ملفك وإرساله للأستاذ بنجاح.")
 
 async def view_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect('data.db')
@@ -83,13 +93,10 @@ async def show_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.message.reply_document(f_id, caption=f_name)
 
 if __name__ == '__main__':
-    # تشغيل الخادم الوهمي في الخلفية
     Thread(target=run_server).start()
-    
     init_db()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("add", add_file))
     app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_student_files))
     app.add_handler(CallbackQueryHandler(view_sections, pattern='view_sections'))
     app.add_handler(CallbackQueryHandler(show_files, pattern='sec_.*'))
