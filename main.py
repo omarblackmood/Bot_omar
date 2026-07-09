@@ -51,9 +51,18 @@ async def add_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ تم إضافة الملف لقسم: {section}")
 
 async def handle_student_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.from_user.id) != ADMIN_ID:
-        await context.bot.forward_message(chat_id=DESTINATION_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
-        await update.message.reply_text("✅ تم استلام ملفك وإرساله للأستاذ بنجاح.")
+    # الحصول على نص الرسالة (التعليق) إن وجد
+    caption = update.message.caption or ""
+    
+    # التحقق هل الرسالة هي محاولة إضافة ملف من الأدمين؟
+    if caption.startswith("/add"):
+        # هنا نستدعي دالة إضافة الملف إذا كان النص يبدأ بـ /add
+        await add_file(update, context)
+    else:
+        # إذا لم تكن إضافة، فهي رسالة من طالب، نقوم بتحويلها للجروب
+        if str(update.message.from_user.id) != ADMIN_ID:
+            await context.bot.forward_message(chat_id=DESTINATION_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
+            await update.message.reply_text("✅ تم استلام ملفك وإرساله للأستاذ بنجاح.")
 
 async def view_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect('data.db')
